@@ -1,0 +1,10 @@
+{
+  "name": "shri-hw-2",
+  "version": "1.0.0",
+  "description": "exploring touch events API",
+  "main": "index.js",
+  "author": "Alex Malitsky",
+  "repository": "https://github.com/amalitsky/shri-2018-2.git",
+  "license": "MIT",
+  "private": true
+}
