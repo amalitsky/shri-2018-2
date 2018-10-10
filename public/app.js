@@ -1,30 +1,53 @@
 (function () {
     'use strict';
 
-    const
-        minScale = 0.5,
-        maxScale = minScale * minScale;
-
-    let
-        minXtransition = 0,
-        minYtransition = 0;
-
+    /**
+     * True when dragging action is active.
+     * @type {boolean}
+     */
     let dragInProgress = false;
 
-    let scaleInProgress = false;
+    /**
+     * Pointer id which kicked off the dragging action. Used only on switch from dragging to scaling.
+     * @type {number}
+     */
+    let dragPointerId = NaN;
 
+    /**
+     * Previous pointer position during dragging.
+     * @type {number[]}
+     */
     let dragPrevPosition = [
         NaN,
         NaN
     ];
 
+    /**
+     * True when scaling action is active.
+     * @type {boolean}
+     */
+    let scaleInProgress = false;
+
+    /**
+     * Value of the current image scale. Can be changed by scaling action.
+     * @type {number}
+     */
     let currentScale = 1;
 
+    /**
+     * Two initial positions (realtive to the img element) of user's fingers. Set on
+     * pointerdown event only and don't change during the scaling action.
+     * @type {number[][]}
+     */
     const scalingPreviousPos = [
         [NaN, NaN],
         [NaN, NaN]
     ];
 
+    /**
+     * Pointer ids of the scaling action.
+     * @type {{"0": number, "1": number}}
+     */
     const scalePointerIds = {
         0: NaN,
         1: NaN
@@ -39,32 +62,51 @@
         imgWidth,
         imgHeight;
 
-    let objectPosition = [0, 0];
+    /**
+     * Current left and top margins of the image, set though 'transform: translate'.
+     * @type {number[]}
+     */
+    let imgPosition = [
+        0,
+        0
+    ];
 
+    /**
+     * Event handler for the viewport resizing event.
+     */
     function onWindowSizeChange() {
         imgWidth = img.naturalWidth;
         imgHeight = img.naturalHeight;
 
         vpWidth = viewport.offsetWidth;
         vpHeight = viewport.offsetHeight;
+
         vpTop = viewport.offsetTop;
         vpLeft = viewport.offsetLeft;
-
-        minXtransition = -1 * Math.max(0, imgWidth - vpWidth);
-        minYtransition = -1 * Math.max(0, imgHeight - vpHeight);
-
-        console.log(`min X: ${minXtransition} minY: ${minYtransition}`);
     }
 
+    /**
+     * Calculates distance between two points.
+     * @param {number[]} pointA
+     * @param {number[]} pointB
+     * @returns {number}
+     */
     function getDistance(pointA, pointB) {
         const dX = Math.abs(pointA[0] - pointB[0]);
         const dY = Math.abs(pointA[1] - pointB[1]);
+
         return Math.sqrt(Math.pow(dX, 2) + Math.pow(dY, 2));
     }
 
-    function getImgPosCoordinates([clientX, clientY]) {
-        const posX = (clientX - vpLeft - objectPosition[0]) / currentScale;
-        const posY = (clientY - vpTop - objectPosition[1]) / currentScale;
+    /**
+     * Coverts viewport coordinates to coordinates relative to img top left corner.
+     * @param {number} clientX
+     * @param {number} clientY
+     * @returns {number[]}
+     */
+    function getImgRelativePos([clientX, clientY]) {
+        const posX = (clientX - vpLeft - imgPosition[0]) / currentScale;
+        const posY = (clientY - vpTop - imgPosition[1]) / currentScale;
 
         return [
             posX,
@@ -72,6 +114,16 @@
         ];
     }
 
+    /**
+     * Usually we have to move image by both axes after the scale change. This is due to the
+     * fact that we want to keep image points initially picked by the user on `pointerdown` events
+     * under his fingers while scaling the image.
+     * @param {number} initX
+     * @param {number} initY
+     * @param {number} currentScale
+     * @param {number} scale
+     * @returns {number[]}
+     */
     function getScalingShift([initX, initY], currentScale, scale) {
         const dX = -initX * (scale - currentScale);
         const dY = -initY * (scale - currentScale);
@@ -79,187 +131,178 @@
         return [dX, dY];
     }
 
-    function updateImgPosition(dx, dy) {
-        let targetX = objectPosition[0] + dx;
-        let targetY = objectPosition[1] + dy;
-
-        /*if (targetX > 0) {
-            targetX = 0;
-        } else if (targetX < minXtransition) {
-            targetX = minXtransition;
-        }
-
-        if (targetY > 0) {
-            targetY = 0;
-        } else if (targetY < minYtransition) {
-            targetY = minYtransition;
-        }*/
+    /**
+     * Updates image margins set through `transform: translate`.
+     * @param {number} dx - requested shift along X axes (relative value).
+     * @param {number} dy - requested shift along Y axes
+     */
+    function moveImage(dx, dy) {
+        let targetX = imgPosition[0] + dx;
+        let targetY = imgPosition[1] + dy;
 
         setImgTransformation([targetX, targetY]);
     }
 
-    function setImgTransformation(translate = objectPosition, scale = currentScale) {
+    /**
+     * Applies actual transformations to the img element and updates global (sic!)
+     * scope variables accordingly.
+     * @param {number[]=} translate
+     * @param {number=} scale
+     */
+    function setImgTransformation(translate = imgPosition, scale = currentScale) {
         const value = `translate(${translate[0]}px, ${translate[1]}px) scale(${scale})`;
 
-        objectPosition[0] = translate[0];
-        objectPosition[1] = translate[1];
+        imgPosition[0] = translate[0];
+        imgPosition[1] = translate[1];
 
         currentScale = scale;
 
         img.style.transform = value;
-        console.log(value);
+        //console.log(value);
     }
 
+    /**
+     * Called to perform image scaling and moving.
+     * @param {number[]} translationShit
+     * @param {number} scale
+     */
     function performImgScaling(translationShit, scale) {
         const translation = [
-            objectPosition[0] + translationShit[0],
-            objectPosition[1] + translationShit[1]
+            imgPosition[0] + translationShit[0],
+            imgPosition[1] + translationShit[1]
         ];
 
         setImgTransformation(translation, scale);
     }
 
+    /**
+     * Pointer move event handler.
+     * @param {MouseEvent} e
+     */
+    function onPointerMove(e) {
+        const {
+            clientX,
+            clientY,
+            pointerId
+        } = e;
+
+        if (dragInProgress) {
+            const [startX, startY] = dragPrevPosition;
+            moveImage(clientX - startX, clientY - startY);
+            dragPrevPosition = [clientX, clientY];
+
+        } else if (scaleInProgress) {
+            const
+                index = pointerId === scalePointerIds[0] ? 0 : 1,
+                anchorIndex = index ? 0 : 1;
+
+            const
+                movingPointPrevPos = scalingPreviousPos[index],
+                anchorPos = scalingPreviousPos[anchorIndex],
+                movingPointPos = getImgRelativePos([clientX, clientY]);
+
+            const scaleChange =
+                getDistance(anchorPos, movingPointPos) /
+                getDistance(anchorPos, movingPointPrevPos);
+
+            const scale = currentScale * scaleChange;
+
+            performImgScaling(
+                getScalingShift(anchorPos, currentScale, scale),
+                scale
+            );
+        }
+    }
+
+    /**
+     * Pointer down event handler.
+     * @param {MouseEvent} e
+     */
+    function onPointerDown(e) {
+        const {
+            clientX,
+            clientY,
+            pointerId
+        } = e;
+
+        if (!dragInProgress) {
+            dragInProgress = true;
+            dragPrevPosition = [
+                clientX,
+                clientY
+            ];
+
+            dragPointerId = pointerId;
+        } else {
+            dragInProgress = false;
+            scaleInProgress = true;
+
+            scalePointerIds[0] = dragPointerId;
+            scalingPreviousPos[0] = getImgRelativePos(dragPrevPosition);
+
+            scalePointerIds[1] = pointerId;
+            scalingPreviousPos[1] = getImgRelativePos([clientX, clientY]);
+        }
+    }
+
+    /**
+     * Resets internal app state to allow for the clean start once requested.
+     */
+    function onPointerGone() {
+        cancelDragging();
+        cancelScaling();
+    }
+
+    /**
+     * Cleans dragging action scope variables.
+     */
+    function cancelDragging() {
+        dragInProgress = false;
+        dragPointerId = NaN;
+        dragPrevPosition[0] = NaN;
+        dragPrevPosition[1] = NaN;
+    }
+
+    /**
+     * Cleans scaling action scope variables.
+     */
+    function cancelScaling() {
+        scaleInProgress = false;
+
+        scalePointerIds[0] = NaN;
+        scalePointerIds[1] = NaN;
+
+        scalingPreviousPos[0] = [
+            NaN,
+            NaN
+        ];
+
+        scalingPreviousPos[1] = [
+            NaN,
+            NaN
+        ];
+    }
+
+    /**
+     * Sets up event handlers and runs some initialization functions.
+     */
     function init() {
         viewport = document.querySelector('.window');
         img = viewport.querySelector('img');
 
         onWindowSizeChange();
 
-        updateImgPosition(
+        //rendering image vertically and horizontally centered
+        moveImage(
             -(imgWidth - vpWidth) / 2,
             -(imgHeight - vpHeight) / 2
         );
 
-        //setImgTransformation(undefined, 0.5);
-
-        function onPointerMove(e) {
-            const {
-                clientX,
-                clientY,
-                pointerId
-            } = e;
-
-            if (dragInProgress) {
-                const [startX, startY] = dragPrevPosition;
-                updateImgPosition(clientX - startX, clientY - startY);
-                dragPrevPosition = [clientX, clientY];
-            } else if (scaleInProgress) {
-                console.log('scaling in progress');
-
-                const index = pointerId === scalePointerIds[0] ? 0 : 1;
-                console.log('index', index);
-
-                const anchorIndex = index ? 0 : 1;
-
-                const movingPointPos = getImgPosCoordinates([clientX, clientY]);
-                const movingPointPrevPos = scalingPreviousPos[index];
-                const anchorPos = scalingPreviousPos[anchorIndex];
-
-                console.log(
-                    anchorPos.concat(),
-                    movingPointPos.concat(),
-                    movingPointPrevPos.concat(),
-                    getDistance(anchorPos, movingPointPos),
-                    getDistance(anchorPos, movingPointPrevPos)
-                );
-
-                const scale =
-                    getDistance(anchorPos, movingPointPos) /
-                    getDistance(anchorPos, movingPointPrevPos);
-
-                console.log(`scale change: `, scale);
-                console.log(`transform change: `, getScalingShift(anchorPos, currentScale, scale * currentScale));
-
-                //scalingPreviousPos[index] = movingPointPos;
-
-                /*console.log(
-                    movingPointPos
-                );*/
-
-                performImgScaling(
-                    getScalingShift(anchorPos, currentScale, scale * currentScale),
-                    scale * currentScale
-                );
-            }
-        }
-
-        let dragPointerId = NaN;
-
-        function onPointerDown(e) {
-            const {
-                clientX,
-                clientY,
-                pointerId
-            } = e;
-
-            if (!dragInProgress) {
-                dragInProgress = true;
-                dragPrevPosition = [
-                    clientX,
-                    clientY
-                ];
-
-                dragPointerId = pointerId;
-            } else {
-                dragInProgress = false;
-                scaleInProgress = true;
-
-                scalePointerIds[0] = dragPointerId;
-                scalingPreviousPos[0] = getImgPosCoordinates(dragPrevPosition);
-
-                scalePointerIds[1] = pointerId;
-                scalingPreviousPos[1] = getImgPosCoordinates([clientX, clientY]);
-            }
-        }
-
-        function onPointerGone() {
-            cancelDragging();
-            cancelScaling();
-        }
-
-        function onPointerLeave() {
-            console.log('leave');
-            onPointerGone();
-        }
-
-        function onPointerCancel() {
-            console.log('cancel');
-            onPointerGone();
-        }
-
-        function onPointerUp() {
-            console.log('cancel');
-            onPointerGone();
-        }
-
-        function cancelDragging() {
-            dragInProgress = false;
-            dragPrevPosition[0] = NaN;
-            dragPrevPosition[1] = NaN;
-            dragPointerId = NaN;
-        }
-
-        function cancelScaling() {
-            if (scaleInProgress) {
-                scaleInProgress = false;
-
-                scalingPreviousPos[0] = [
-                    NaN, NaN
-                ];
-                scalingPreviousPos[1] = [
-                    NaN, NaN
-                ];
-
-                scalePointerIds[0] = NaN;
-                scalePointerIds[1] = NaN;
-            }
-        }
-
         viewport.addEventListener('pointermove', onPointerMove);
-        viewport.addEventListener('pointerup', onPointerUp);
+        viewport.addEventListener('pointerup', onPointerGone);
         viewport.addEventListener('pointerdown', onPointerDown);
-        viewport.addEventListener('pointerleave', onPointerLeave);
-        viewport.addEventListener('pointercancel', onPointerCancel);
+        viewport.addEventListener('pointerleave', onPointerGone);
+        viewport.addEventListener('pointercancel', onPointerGone);
     }
 
     window.addEventListener('load', init);
