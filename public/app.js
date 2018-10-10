@@ -44,8 +44,8 @@
     let objectPosition = [0, 0];
 
     function onWindowSizeChange() {
-        imgWidth = img.naturalWidth;
-        imgHeight = img.naturalHeight;
+        imgWidth = img.naturalWidth || img.offsetWidth;
+        imgHeight = img.naturalHeight || img.offsetHeight;
 
         vpWidth = viewport.offsetWidth;
         vpHeight = viewport.offsetHeight;
