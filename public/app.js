@@ -30,13 +30,11 @@
         1: NaN
     };
 
-    const scalingCenter = [
-        NaN, NaN
-    ];
-
     let viewport,
         vpWidth,
         vpHeight,
+        vpTop,
+        vpLeft,
         img,
         imgWidth,
         imgHeight;
@@ -44,16 +42,81 @@
     let objectPosition = [0, 0];
 
     function onWindowSizeChange() {
-        imgWidth = img.naturalWidth || img.offsetWidth;
-        imgHeight = img.naturalHeight || img.offsetHeight;
+        imgWidth = img.naturalWidth;
+        imgHeight = img.naturalHeight;
 
         vpWidth = viewport.offsetWidth;
         vpHeight = viewport.offsetHeight;
+        vpTop = viewport.offsetTop;
+        vpLeft = viewport.offsetLeft;
 
         minXtransition = -1 * Math.max(0, imgWidth - vpWidth);
         minYtransition = -1 * Math.max(0, imgHeight - vpHeight);
 
-        console.log(minXtransition, minYtransition);
+        console.log(`min X: ${minXtransition} minY: ${minYtransition}`);
+    }
+
+    function getDistance(pointA, pointB) {
+        const dX = Math.abs(pointA[0] - pointB[0]);
+        const dY = Math.abs(pointA[1] - pointB[1]);
+        return Math.sqrt(Math.pow(dX, 2) + Math.pow(dY, 2));
+    }
+
+    function getImgPosCoordinates([clientX, clientY]) {
+        const posX = (clientX - vpLeft - objectPosition[0]) / currentScale;
+        const posY = (clientY - vpTop - objectPosition[1]) / currentScale;
+
+        return [
+            posX,
+            posY
+        ];
+    }
+
+    function getScalingShift([initX, initY], currentScale, scale) {
+        const dX = -initX * (scale - currentScale);
+        const dY = -initY * (scale - currentScale);
+
+        return [dX, dY];
+    }
+
+    function updateImgPosition(dx, dy) {
+        let targetX = objectPosition[0] + dx;
+        let targetY = objectPosition[1] + dy;
+
+        /*if (targetX > 0) {
+            targetX = 0;
+        } else if (targetX < minXtransition) {
+            targetX = minXtransition;
+        }
+
+        if (targetY > 0) {
+            targetY = 0;
+        } else if (targetY < minYtransition) {
+            targetY = minYtransition;
+        }*/
+
+        setImgTransformation([targetX, targetY]);
+    }
+
+    function setImgTransformation(translate = objectPosition, scale = currentScale) {
+        const value = `translate(${translate[0]}px, ${translate[1]}px) scale(${scale})`;
+
+        objectPosition[0] = translate[0];
+        objectPosition[1] = translate[1];
+
+        currentScale = scale;
+
+        img.style.transform = value;
+        console.log(value);
+    }
+
+    function performImgScaling(translationShit, scale) {
+        const translation = [
+            objectPosition[0] + translationShit[0],
+            objectPosition[1] + translationShit[1]
+        ];
+
+        setImgTransformation(translation, scale);
     }
 
     function init() {
@@ -62,38 +125,12 @@
 
         onWindowSizeChange();
 
-        function updateImgPosition(dx, dy) {
-            let targetX = objectPosition[0] + dx;
-            let targetY = objectPosition[1] + dy;
-
-            if (targetX > 0) {
-                targetX = 0;
-            } else if (targetX < minXtransition) {
-                targetX = minXtransition;
-            }
-
-            if (targetY > 0) {
-                targetY = 0;
-            } else if (targetY < minYtransition) {
-                targetY = minYtransition;
-            }
-
-            objectPosition[0] = targetX;
-            objectPosition[1] = targetY;
-
-            img.style.transform = `translate(${targetX}px, ${targetY}px)`;
-            console.log(`x: ${targetX}, y: ${targetY}`);
-        }
-
         updateImgPosition(
             -(imgWidth - vpWidth) / 2,
             -(imgHeight - vpHeight) / 2
         );
 
-        function scaleAndMove(anchor, start, end) {
-            //figuring scale
-            //moving pic to meet anchor again
-        }
+        //setImgTransformation(undefined, 0.5);
 
         function onPointerMove(e) {
             const {
@@ -107,63 +144,72 @@
                 updateImgPosition(clientX - startX, clientY - startY);
                 dragPrevPosition = [clientX, clientY];
             } else if (scaleInProgress) {
-                if (Number.isNaN(scalingPreviousPos[0][0])) {
-                    scalePointerIds[0] = pointerId;
+                console.log('scaling in progress');
 
-                    scalingPreviousPos[0] = [
-                        clientX,
-                        clientY
-                    ];
+                const index = pointerId === scalePointerIds[0] ? 0 : 1;
+                console.log('index', index);
 
-                    console.log('fist scaling pointer captured');
-                } else if (Number.isNaN(scalingPreviousPos[1][0])) {
-                    scalePointerIds[1] = pointerId;
+                const anchorIndex = index ? 0 : 1;
 
-                    scalingPreviousPos[1] = [
-                        clientX,
-                        clientY
-                    ];
+                const movingPointPos = getImgPosCoordinates([clientX, clientY]);
+                const movingPointPrevPos = scalingPreviousPos[index];
+                const anchorPos = scalingPreviousPos[anchorIndex];
 
-                    setScalingCenter();
-                    console.log('second scaling pointer captured');
-                } else {
-                    console.log('scaling in progress');
+                console.log(
+                    anchorPos.concat(),
+                    movingPointPos.concat(),
+                    movingPointPrevPos.concat(),
+                    getDistance(anchorPos, movingPointPos),
+                    getDistance(anchorPos, movingPointPrevPos)
+                );
 
-                    const index = pointerId === scalePointerIds[0] ? 0 : 1;
+                const scale =
+                    getDistance(anchorPos, movingPointPos) /
+                    getDistance(anchorPos, movingPointPrevPos);
 
-                    const deltaX = clientX - scalingPreviousPos[index][0];
-                    const deltaY = clientY - scalingPreviousPos[index][1];
+                console.log(`scale change: `, scale);
+                console.log(`transform change: `, getScalingShift(anchorPos, currentScale, scale * currentScale));
 
-                    const xScale = deltaX / (imgWidth * currentScale);
-                    const yScale = deltaY / (imgHeight * currentScale);
+                //scalingPreviousPos[index] = movingPointPos;
 
-                    console.log(xScale, yScale);
+                /*console.log(
+                    movingPointPos
+                );*/
 
-                    scalingPreviousPos[index][0] = clientX;
-                    scalingPreviousPos[index][1] = clientY;
-
-                    setScalingCenter();
-                }
+                performImgScaling(
+                    getScalingShift(anchorPos, currentScale, scale * currentScale),
+                    scale * currentScale
+                );
             }
         }
 
-        function setScalingCenter() {
-            const [one, two] = scalingPreviousPos;
-            scalingCenter[0] = (one[0] + two[0]) / 2;
-            scalingCenter[1] = (one[1] + two[1]) / 2;
-        }
+        let dragPointerId = NaN;
 
         function onPointerDown(e) {
-            const {clientX, clientY} = e;
+            const {
+                clientX,
+                clientY,
+                pointerId
+            } = e;
 
             if (!dragInProgress) {
                 dragInProgress = true;
+                dragPrevPosition = [
+                    clientX,
+                    clientY
+                ];
+
+                dragPointerId = pointerId;
             } else {
                 dragInProgress = false;
                 scaleInProgress = true;
-            }
 
-            dragPrevPosition = [clientX, clientY];
+                scalePointerIds[0] = dragPointerId;
+                scalingPreviousPos[0] = getImgPosCoordinates(dragPrevPosition);
+
+                scalePointerIds[1] = pointerId;
+                scalingPreviousPos[1] = getImgPosCoordinates([clientX, clientY]);
+            }
         }
 
         function onPointerGone() {
@@ -187,11 +233,10 @@
         }
 
         function cancelDragging() {
-            if (dragInProgress) {
-                dragInProgress = false;
-                dragPrevPosition[0] = NaN;
-                dragPrevPosition[1] = NaN;
-            }
+            dragInProgress = false;
+            dragPrevPosition[0] = NaN;
+            dragPrevPosition[1] = NaN;
+            dragPointerId = NaN;
         }
 
         function cancelScaling() {
@@ -205,9 +250,6 @@
                     NaN, NaN
                 ];
 
-                scalingCenter[0] = NaN;
-                scalingCenter[1] = NaN;
-
                 scalePointerIds[0] = NaN;
                 scalePointerIds[1] = NaN;
             }
@@ -220,7 +262,7 @@
         viewport.addEventListener('pointercancel', onPointerCancel);
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('load', init);
     window.addEventListener('resize', onWindowSizeChange);
 })();
 
