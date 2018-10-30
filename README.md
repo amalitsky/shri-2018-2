@@ -1,3 +1,12 @@
+## NPM scripts
+- `npm start` to build project and run it on the local dev server _browserSync_
+- `npm run build` to build project into the local [public folder](public)
+
+### Typescript migration comments
+- _tsconfig_ and _tslint_ configs копированы из [первой домашки](https://github.com/amalitsky/shri-2018-hw-1)
+- подчистил _JSDoc_ чтобы не было дублирования
+- проблем при миграции не было
+
 ## Touch events: dragging and scaling
 - Не стал впихивать решение в карточку прежнего задания - хотелось больше места и сипатичнее
 изображение
@@ -16,7 +25,6 @@
   `justify-content:center` и даже начальное позиционирование осуществлять через JS
   - встал вопрос пересчета `clientX`/`clientY` в координаты относительно изображения, надо учесть отступ wrapper и
   значения установленных *transitions* (`scale`/`translate`)
-
 
 ### Не выполнено
 - управление яркостью вращением
